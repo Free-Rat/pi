@@ -43,3 +43,8 @@ plans/
 .pi/hf-sessions-backup/
 collect.sh
 packages/agent/docs/extensions/pi-server-artifact/index.md
+
+# Nix
+result
+result-*
+.direnv
