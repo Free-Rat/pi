@@ -16,8 +16,8 @@
         let
           pkgs = nixpkgs.legacyPackages.${system};
           nodejs = pkgs.nodejs_22;
-          runtimeDeps = with pkgs; [ git fd ripgrep ]
-            ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ xclip ];
+          runtimeDeps = [ nodejs ] ++ (with pkgs; [ git fd ripgrep ])
+            ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.xclip ];
         in
         {
           pi = pkgs.buildNpmPackage {
@@ -50,6 +50,27 @@
               makeWrapper ${nodejs}/bin/node $out/bin/pi \
                 --add-flags "$out/lib/pi/packages/coding-agent/dist/cli.js" \
                 --prefix PATH : ${pkgs.lib.makeBinPath runtimeDeps}
+
+              cat > $out/bin/pi-install-subagents <<EOF
+#!${pkgs.runtimeShell}
+set -e
+exec "$out/bin/pi" install npm:pi-subagents "\$@"
+EOF
+              chmod +x $out/bin/pi-install-subagents
+
+              cat > $out/bin/pi-install-intercom <<EOF
+#!${pkgs.runtimeShell}
+set -e
+exec "$out/bin/pi" install npm:pi-intercom "\$@"
+EOF
+              chmod +x $out/bin/pi-install-intercom
+
+              cat > $out/bin/pi-install-web-access <<EOF
+#!${pkgs.runtimeShell}
+set -e
+exec "$out/bin/pi" install npm:pi-web-access "\$@"
+EOF
+              chmod +x $out/bin/pi-install-web-access
               runHook postInstall
             '';
             nativeBuildInputs = [ pkgs.makeWrapper ];
