@@ -32,6 +32,7 @@
               runHook preBuild
               npm --prefix packages/tui run build
               npm --prefix packages/telemetry run build
+              npm --prefix packages/chord run build
               # Build ai: skip generate-models/generate-image-models
               # (requires network); use committed generated files instead
               ./node_modules/.bin/tsgo -p packages/ai/tsconfig.build.json
