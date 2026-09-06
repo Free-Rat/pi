@@ -24,13 +24,14 @@
             pname = "pi";
             inherit version;
             src = self;
-            npmDepsHash = "sha256-j5hOc2ZFAWyNNjGay1dCNhW6WVmIvTTQdYPLsrRUakE=";
+            npmDepsHash = "sha256-ovqlgsWgSxbyuKqjWxMt/mEOAyN/nQMAiXXOrhZmjhM=";
             inherit nodejs;
             npmRebuildFlags = [ "--ignore-scripts" ];
             NODE_OPTIONS = "--experimental-transform-types";
             buildPhase = ''
               runHook preBuild
               npm --prefix packages/tui run build
+              npm --prefix packages/telemetry run build
               # Build ai: skip generate-models/generate-image-models
               # (requires network); use committed generated files instead
               ./node_modules/.bin/tsgo -p packages/ai/tsconfig.build.json
