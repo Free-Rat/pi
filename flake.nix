@@ -1,100 +1,54 @@
 {
-  description = "Pi - Interactive AI coding agent";
+  description = "Pi coding agent";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+
+    # nixpkgs unstable no longer supports Intel macOS. Keep using the final
+    # Darwin branch that does so for pi's x86_64-darwin package.
+    nixpkgs-darwin-x64.url = "github:NixOS/nixpkgs/nixpkgs-26.05-darwin";
+
   };
 
-  outputs = { self, nixpkgs }:
+  outputs =
+    {
+      self,
+      nixpkgs,
+      nixpkgs-darwin-x64,
+    }:
     let
-      supportedSystems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
-      forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
-      version = (builtins.fromJSON (builtins.readFile ./packages/coding-agent/package.json)).version;
+      systems = [
+        "aarch64-darwin"
+        "aarch64-linux"
+        "x86_64-darwin"
+        "x86_64-linux"
+      ];
+      forAllSystems = nixpkgs.lib.genAttrs systems;
+      nixpkgsFor = system: if system == "x86_64-darwin" then nixpkgs-darwin-x64 else nixpkgs;
+      packageFor =
+        system:
+        let
+          pkgs = import (nixpkgsFor system) { inherit system; };
+        in
+        pkgs.callPackage ./nix/package.nix { source = self; };
     in
     {
-      packages = forAllSystems (system:
-        let
-          pkgs = nixpkgs.legacyPackages.${system};
-          nodejs = pkgs.nodejs_22;
-          runtimeDeps = [ nodejs ] ++ (with pkgs; [ git fd ripgrep ])
-            ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.xclip ];
-        in
-        {
-          pi = pkgs.buildNpmPackage {
-            pname = "pi";
-            inherit version;
-            src = self;
-            npmDepsHash = "sha256-ovqlgsWgSxbyuKqjWxMt/mEOAyN/nQMAiXXOrhZmjhM=";
-            inherit nodejs;
-            npmRebuildFlags = [ "--ignore-scripts" ];
-            NODE_OPTIONS = "--experimental-transform-types";
-            buildPhase = ''
-              runHook preBuild
-              npm --prefix packages/tui run build
-              npm --prefix packages/telemetry run build
-              npm --prefix packages/chord run build
-              # Build ai: skip generate-models/generate-image-models
-              # (requires network); use committed generated files instead
-              ./node_modules/.bin/tsgo -p packages/ai/tsconfig.build.json
-              npm --prefix packages/agent run build
-              npm --prefix packages/coding-agent run build
-              runHook postBuild
-            '';
-            installPhase = ''
-              runHook preInstall
-              npm prune --production --ignore-scripts
-              mkdir -p $out/lib/pi $out/bin
-              cp -a node_modules $out/lib/pi/
-              cp -a packages $out/lib/pi/
-              find $out/lib/pi/packages -name 'test' -type d -exec rm -rf {} + 2>/dev/null || true
-              find $out/lib/pi/packages -name '*.ts' -not -name '*.d.ts' -delete 2>/dev/null || true
-              find $out/lib/pi/packages -name 'tsconfig*.json' -delete 2>/dev/null || true
-              makeWrapper ${nodejs}/bin/node $out/bin/pi \
-                --add-flags "$out/lib/pi/packages/coding-agent/dist/cli.js" \
-                --prefix PATH : ${pkgs.lib.makeBinPath runtimeDeps}
+      packages = forAllSystems (system: {
+        default = packageFor system;
+        pi = packageFor system;
+      });
 
-              cat > $out/bin/pi-install-subagents <<EOF
-#!${pkgs.runtimeShell}
-set -e
-exec "$out/bin/pi" install npm:pi-subagents "\$@"
-EOF
-              chmod +x $out/bin/pi-install-subagents
+      apps = forAllSystems (system: {
+        default = {
+          type = "app";
+          program = "${self.packages.${system}.default}/bin/pi";
+          meta.description = "Pi coding agent";
+        };
+        pi = self.apps.${system}.default;
+      });
 
-              cat > $out/bin/pi-install-intercom <<EOF
-#!${pkgs.runtimeShell}
-set -e
-exec "$out/bin/pi" install npm:pi-intercom "\$@"
-EOF
-              chmod +x $out/bin/pi-install-intercom
-
-              cat > $out/bin/pi-install-web-access <<EOF
-#!${pkgs.runtimeShell}
-set -e
-exec "$out/bin/pi" install npm:pi-web-access "\$@"
-EOF
-              chmod +x $out/bin/pi-install-web-access
-              runHook postInstall
-            '';
-            nativeBuildInputs = [ pkgs.makeWrapper ];
-            meta = with pkgs.lib; {
-              description = "Interactive AI coding agent";
-              homepage = "https://github.com/earendil-works/pi-mono";
-              license = licenses.mit;
-              platforms = platforms.unix;
-              mainProgram = "pi";
-            };
-          };
-          default = self.packages.${system}.pi;
-        });
-
-      devShells = forAllSystems (system:
-        let
-          pkgs = nixpkgs.legacyPackages.${system};
-        in
-        {
-          default = pkgs.mkShell {
-            packages = with pkgs; [ nodejs_22 fd ripgrep ];
-          };
-        });
+      overlays.default = final: _previous: {
+        pi = final.callPackage ./nix/package.nix { source = self; };
+      };
     };
 }
